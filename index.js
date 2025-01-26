@@ -9,7 +9,7 @@ var jwt = require("jsonwebtoken");
 app.use(cors());
 app.use(express.json());
 
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const uri = `mongodb+srv://${process.env.DB_Name}:${process.env.DB_Pass}@cluster0.fb2uu.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -28,6 +28,8 @@ async function run() {
 
     const mealCollection = client.db("Hostel").collection("Meals");
     const userCollection = client.db("Hostel").collection("users");
+    const requestCollection = client.db("Hostel").collection("requests");
+    const reviewCollection = client.db("Hostel").collection("reviews");
 
     // Apis related to jwt
     app.post("/jwt", async (req, res) => {
@@ -65,9 +67,81 @@ async function run() {
       }
       next();
     };
+    // Meal related api
 
     app.get("/meal", async (req, res) => {
-      const result = await mealCollection.find().toArray();
+      const search = req.query?.search;
+      const category = req.query?.category;
+      const min = req.query?.min;
+      const max = req.query?.max;
+      const minPrice = parseFloat(min);
+      const maxPrice = parseFloat(max);
+      let query = {};
+      console.log(search);
+      if (search) {
+        query = {
+          $or: [
+            { title: { $regex: search, $options: "i" } },
+            { description: { $regex: search, $options: "i" } },
+            { ingredients: { $in: [search] } },
+          ],
+        };
+      }
+      if(category){
+        query.category = { $regex: new RegExp(category, 'i') };
+      }
+      if (minPrice || maxPrice) {
+        query.price = { $gte: minPrice, $lte: maxPrice };
+        console.log('inside min max', min, max);
+      }
+      const cursor = mealCollection.find(query);
+      const result = await cursor.toArray();
+      res.send(result);
+    });
+    // Meal with id
+    app.get("/meal/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await mealCollection.findOne(query);
+      res.send(result);
+    });
+
+    app.put("/meal/updateLikes/:id", async (req, res) => {
+      const userEmail = req.body.email;
+      console.log(userEmail);
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const item = await mealCollection.findOne(query);
+
+      if (!item?.likedBy?.includes(userEmail)) {
+        const result = await mealCollection.updateOne(
+          query,
+          {
+            $inc: { likes: 1 },
+            $push: { likedBy: userEmail },
+          },
+          { upsert: true }
+        );
+        // console.log(result, "from true");
+        res.send(result);
+      } else {
+        const result = await mealCollection.updateOne(
+          query,
+          {
+            $inc: { likes: -1 },
+            $pull: { likedBy: userEmail },
+          },
+          { upsert: true }
+        );
+        // console.log(result, "from false");
+
+        res.send(result);
+      }
+    });
+    // request related apis
+    app.post("/request", verifyToken, async (req, res) => {
+      const data = req.body;
+      const result = await requestCollection.insertOne(data);
       res.send(result);
     });
 
@@ -80,6 +154,23 @@ async function run() {
         return res.send({ message: "user already exists", insertedId: null });
       }
       const result = await userCollection.insertOne(user);
+      res.send({ result });
+    });
+    // review related apis
+    app.get("/review", async (req, res) => {
+      const result = await reviewCollection.find().toArray();
+      res.send(result);
+    });
+    app.post("/review", verifyToken, async (req, res) => {
+      const review = req.body;
+      const result = await reviewCollection.insertOne(review);
+      res.send(result);
+    });
+    // get review by ID
+    app.get("/review/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { mealId: id };
+      const result = await reviewCollection.find(query).toArray();
       res.send(result);
     });
 
