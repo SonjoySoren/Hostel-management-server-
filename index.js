@@ -30,6 +30,7 @@ async function run() {
     const userCollection = client.db("Hostel").collection("users");
     const requestCollection = client.db("Hostel").collection("requests");
     const reviewCollection = client.db("Hostel").collection("reviews");
+    const upcomingCollection = client.db("Hostel").collection("upcoming");
 
     // Apis related to jwt
     app.post("/jwt", async (req, res) => {
@@ -138,7 +139,12 @@ async function run() {
         res.send(result);
       }
     });
-    // request related apis
+    // upcoming foods related apis
+    app.get('/upcomingMeals', async(req, res)=>{
+      
+    })
+
+    // request food related apis
     app.post("/request", verifyToken, async (req, res) => {
       const data = req.body;
       const result = await requestCollection.insertOne(data);
