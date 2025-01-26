@@ -141,6 +141,9 @@ async function run() {
     });
     // upcoming foods related apis
     app.get('/upcomingMeals', async(req, res)=>{
+
+      const result = await upcomingCollection.find().toArray();
+      res.send(result);
       
     })
 
