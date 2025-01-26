@@ -106,8 +106,8 @@ async function run() {
       const result = await mealCollection.findOne(query);
       res.send(result);
     });
-
-    app.put("/meal/updateLikes/:id", async (req, res) => {
+    // Liked functionality for meals
+    app.put("/meal/updateLikes/:id",verifyToken, async (req, res) => {
       const userEmail = req.body.email;
       console.log(userEmail);
       const id = req.params.id;
@@ -146,6 +146,40 @@ async function run() {
       res.send(result);
       
     })
+
+    // Liked functionality for upcomingMeals
+    app.put("/upcomingMeal/updateLikes/:id", async (req, res) => {
+      const userEmail = req.body.email;
+      console.log(userEmail);
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const item = await upcomingCollection.findOne(query);
+
+      if (!item?.likedBy?.includes(userEmail)) {
+        const result = await upcomingCollection.updateOne(
+          query,
+          {
+            $inc: { likes: 1 },
+            $push: { likedBy: userEmail },
+          },
+          { upsert: true }
+        );
+        // console.log(result, "from true");
+        res.send(result);
+      } else {
+        const result = await upcomingCollection.updateOne(
+          query,
+          {
+            $inc: { likes: -1 },
+            $pull: { likedBy: userEmail },
+          },
+          { upsert: true }
+        );
+        // console.log(result, "from false");
+
+        res.send(result);
+      }
+    });
 
     // request food related apis
     app.post("/request", verifyToken, async (req, res) => {
