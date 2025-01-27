@@ -78,7 +78,7 @@ async function run() {
       const minPrice = parseFloat(min);
       const maxPrice = parseFloat(max);
       let query = {};
-      console.log(search);
+
       if (search) {
         query = {
           $or: [
@@ -88,12 +88,11 @@ async function run() {
           ],
         };
       }
-      if(category){
-        query.category = { $regex: new RegExp(category, 'i') };
+      if (category) {
+        query.category = { $regex: new RegExp(category, "i") };
       }
       if (minPrice || maxPrice) {
         query.price = { $gte: minPrice, $lte: maxPrice };
-        console.log('inside min max', min, max);
       }
       const cursor = mealCollection.find(query);
       const result = await cursor.toArray();
@@ -107,9 +106,9 @@ async function run() {
       res.send(result);
     });
     // Liked functionality for meals
-    app.put("/meal/updateLikes/:id",verifyToken, async (req, res) => {
+    app.put("/meal/updateLikes/:id", verifyToken, async (req, res) => {
       const userEmail = req.body.email;
-      console.log(userEmail);
+
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const item = await mealCollection.findOne(query);
@@ -123,7 +122,7 @@ async function run() {
           },
           { upsert: true }
         );
-        // console.log(result, "from true");
+
         res.send(result);
       } else {
         const result = await mealCollection.updateOne(
@@ -134,23 +133,34 @@ async function run() {
           },
           { upsert: true }
         );
-        // console.log(result, "from false");
 
         res.send(result);
       }
     });
     // upcoming foods related apis
-    app.get('/upcomingMeals', async(req, res)=>{
-
+    app.get("/upcomingMeals", async (req, res) => {
       const result = await upcomingCollection.find().toArray();
       res.send(result);
-      
-    })
+    });
+    // upcoming foods by id
+    app.get("/upcomingMealById/:id", async (req, res) => {
+      const id = req.params?.id;
+      if (id == "undefined") {
+        return res.send({ message: "params is not defined" });
+      }
+      let query = {};
+      if (id) {
+        query = { _id: new ObjectId(id) };
+      }
+
+      const result = await upcomingCollection.findOne(query);
+      res.send(result);
+    });
 
     // Liked functionality for upcomingMeals
     app.put("/upcomingMeal/updateLikes/:id", async (req, res) => {
       const userEmail = req.body.email;
-      console.log(userEmail);
+
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const item = await upcomingCollection.findOne(query);
@@ -164,7 +174,7 @@ async function run() {
           },
           { upsert: true }
         );
-        // console.log(result, "from true");
+
         res.send(result);
       } else {
         const result = await upcomingCollection.updateOne(
@@ -175,7 +185,6 @@ async function run() {
           },
           { upsert: true }
         );
-        // console.log(result, "from false");
 
         res.send(result);
       }
@@ -189,6 +198,16 @@ async function run() {
     });
 
     // User Related apis
+    app.get("/users/:email", verifyToken, async (req, res) => {
+      const email = req.params?.email;
+
+      const query = { email: { $regex: new RegExp(email, "i") } };
+
+      const result = await userCollection.findOne(query);
+      console.log("inside user api");
+      res.send(result);
+    });
+
     app.post("/users", async (req, res) => {
       const user = req.body;
       const query = { email: user.email };
