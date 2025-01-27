@@ -196,6 +196,46 @@ async function run() {
       const result = await requestCollection.insertOne(data);
       res.send(result);
     });
+    app.get("/request", verifyToken, async (req, res) => {
+      const email = req.query?.email;
+      // console.log(email);
+      let query = {};
+      if (email) {
+        query = { requestedBy: { $regex: new RegExp(email, "i") } };
+      }
+      const userRequests = await requestCollection.find(query).toArray();
+      const mealRequests = userRequests.map((request) => ({
+        mealId: request.mealId,
+        status: request.status,
+      }));
+      const mealIds = userRequests.map((request) => request.mealId);
+      const objectIdMealIds = mealIds.map((id) => new ObjectId(id));
+      const meals = await mealCollection
+        .find({ _id: { $in: objectIdMealIds } })
+        .toArray();
+      const mealsWithStatus = meals.map((meal) => {
+        const matchingRequest = mealRequests.find(
+          (request) => request.mealId === meal._id.toString()
+        );
+        return { ...meal, status: matchingRequest.status };
+      });
+
+      res.send(mealsWithStatus);
+    });
+    // delete request by mealId and requestedBy
+    app.delete("/request", async (req, res) => {
+      const userEmail = req.query?.userEmail;
+      const mealId = req.query?.mealId;
+      let query = {};
+      if (userEmail && mealId) {
+        query = {
+          mealId: mealId,
+          requestedBy: { $regex: new RegExp(userEmail, "i") },
+        };
+      }
+      const result = await requestCollection.deleteMany(query);
+      res.send(result);
+    });
 
     // User Related apis
     app.get("/users/:email", verifyToken, async (req, res) => {
@@ -204,7 +244,7 @@ async function run() {
       const query = { email: { $regex: new RegExp(email, "i") } };
 
       const result = await userCollection.findOne(query);
-      console.log("inside user api");
+      // console.log("inside user api");
       res.send(result);
     });
 
