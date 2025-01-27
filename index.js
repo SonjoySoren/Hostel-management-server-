@@ -283,17 +283,16 @@ async function run() {
         .find({ _id: { $in: objectIdMealIds } })
         .toArray();
 
-        const mealsWithReview = meals.map((meal) => {
-          const matchingReview = mealReview.find(
-            (review) => review.mealId === meal._id.toString()
-          );
-          return { ...meal, reviewText: matchingReview.reviewText };
-        });
+      const mealsWithReview = meals.map((meal) => {
+        const matchingReview = mealReview.find(
+          (review) => review.mealId === meal._id.toString()
+        );
+        return { ...meal, reviewText: matchingReview.reviewText };
+      });
       res.send(mealsWithReview);
     });
-    
 
-    app.post("/review",  async (req, res) => {
+    app.post("/review", async (req, res) => {
       const review = req.body;
       const result = await reviewCollection.insertOne(review);
       res.send(result);
@@ -305,6 +304,64 @@ async function run() {
       const result = await reviewCollection.find(query).toArray();
       res.send(result);
     });
+    app.get("/reviewByEmail", async (req, res) => {
+      // console.log("hi from review byEmail")
+      const email = req.query?.email;
+      const mealId = req.query?.mealId;
+      let query = {};
+      if (email && mealId) {
+        query = {
+          mealId: mealId,
+          userEmail: { $regex: new RegExp(email, "i") },
+        };
+      }
+      const result = await reviewCollection.findOne(query);
+      res.send(result);
+    });
+
+
+
+
+    app.patch("/review",verifyToken, async (req, res) => {
+      const email = req.query?.email;
+      const mealId = req.query?.mealId;
+      const newReview = req.body;
+      // console.log("from patch", email, mealId, newReview);
+      let query = {};
+      if (email && mealId && newReview) {
+        query = {
+          mealId: mealId,
+          userEmail: { $regex: new RegExp(email, "i") },
+          reviewText: { $regex: new RegExp(newReview?.oldReviewText, "i") },
+        };
+      }
+      const updatedDoc = {
+        $set: {
+          reviewText: newReview?.reviewText,
+        },
+      };
+
+      const result = await reviewCollection.updateOne(query, updatedDoc);
+
+      res.send(result);
+    });
+
+    app.delete('/review', async(req,res)=>{
+      const email = req.query?.email;
+      const mealId = req.query?.mealId;
+      if (email && mealId ) {
+        query = {
+          mealId: mealId,
+          userEmail: { $regex: new RegExp(email, "i") },
+          
+        };
+      }
+      const deleteResult = await reviewCollection.deleteMany(query);
+      res.send(deleteResult);
+
+    })
+
+    
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
