@@ -260,16 +260,40 @@ async function run() {
     });
     // review related apis
     app.get("/review", async (req, res) => {
-      const email = req.query?.email;
-      const query = {};
-      if (email) {
-        query = {
-          userEmail:  { $regex: new RegExp(email, 'i') } }
-      }
       const result = await reviewCollection.find(query).toArray();
       res.send(result);
     });
-    app.post("/review", verifyToken, async (req, res) => {
+
+    app.get("/review/mealData", async (req, res) => {
+      const email = req.query?.email;
+      let query = {};
+      if (email) {
+        query = {
+          userEmail: { $regex: new RegExp(email, "i") },
+        };
+      }
+      const userReview = await reviewCollection.find(query).toArray();
+      const mealReview = userReview.map((review) => ({
+        mealId: review.mealId,
+        reviewText: review.reviewText,
+      }));
+      const mealIds = userReview.map((review) => review.mealId);
+      const objectIdMealIds = mealIds.map((id) => new ObjectId(id));
+      const meals = await mealCollection
+        .find({ _id: { $in: objectIdMealIds } })
+        .toArray();
+
+        const mealsWithReview = meals.map((meal) => {
+          const matchingReview = mealReview.find(
+            (review) => review.mealId === meal._id.toString()
+          );
+          return { ...meal, reviewText: matchingReview.reviewText };
+        });
+      res.send(mealsWithReview);
+    });
+    
+
+    app.post("/review",  async (req, res) => {
       const review = req.body;
       const result = await reviewCollection.insertOne(review);
       res.send(result);
