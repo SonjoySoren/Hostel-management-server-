@@ -260,7 +260,13 @@ async function run() {
     });
     // review related apis
     app.get("/review", async (req, res) => {
-      const result = await reviewCollection.find().toArray();
+      const email = req.query?.email;
+      const query = {};
+      if (email) {
+        query = {
+          userEmail:  { $regex: new RegExp(email, 'i') } }
+      }
+      const result = await reviewCollection.find(query).toArray();
       res.send(result);
     });
     app.post("/review", verifyToken, async (req, res) => {
