@@ -24,7 +24,7 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
+    // await client.connect();
 
     const mealCollection = client.db("Hostel").collection("Meals");
     const userCollection = client.db("Hostel").collection("users");
@@ -155,10 +155,22 @@ async function run() {
       const result = await mealCollection.insertOne(newMeal);
       res.send(result);
     });
+    // delete meal
+    app.delete("/meal/:id", verifyToken, verifyAdmin, async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await mealCollection.deleteOne(query);
+      res.send(result);
+    });
 
     // upcoming foods related apis
     app.get("/upcomingMeals", async (req, res) => {
-      const result = await upcomingCollection.find().toArray();
+      const sort = req.query?.sort;
+      let sortby = {};
+      if (sort) {
+        sortby = { likes: parseInt(sort) };
+      }
+      const result = await upcomingCollection.find().sort(sortby).toArray();
       res.send(result);
     });
     // upcoming foods by id
@@ -208,6 +220,19 @@ async function run() {
         res.send(result);
       }
     });
+    app.post("/upcomingPublish/:id", async (req, res) => {
+      const id = req.params?.id;
+      const data = req.body;
+      let query = {};
+      if (id) {
+        query = {
+          _id: new ObjectId(id),
+        };
+      }
+      const deleteFromUpcoming = await upcomingCollection.deleteOne(query);
+      const result = await mealCollection.insertOne(data)
+      res.send(result);
+    });
 
     // request food related apis
     app.post("/request", verifyToken, async (req, res) => {
@@ -215,7 +240,131 @@ async function run() {
       const result = await requestCollection.insertOne(data);
       res.send(result);
     });
-    app.get("/request", verifyToken, async (req, res) => {
+    app.patch("/requestServe/:id", async (req, res) => {
+      const id = req.params?.id;
+      const query = { _id: new ObjectId(id) };
+      const updatedDoc = {
+        $set: {
+          status: "delivered",
+        },
+      };
+      const result = await requestCollection.updateOne(query, updatedDoc);
+      res.send(result);
+    });
+
+    // request food for admin
+    app.get("/requestByAdmin", async (req, res) => {
+      const requests = await requestCollection.find({}).toArray();
+
+      const requestsWithUserDetails = await Promise.all(
+        requests.map(async (request) => {
+          const user = await userCollection.findOne({
+            email: { $regex: new RegExp(request.requestedBy, "i") },
+          });
+          return { ...request, user };
+        })
+      );
+
+      const requestsWithUserDetailsAndMealData = await Promise.all(
+        requestsWithUserDetails.map(async (request) => {
+          const meal = await mealCollection.findOne({
+            _id: new ObjectId(request.mealId),
+          });
+          return { ...request, meal };
+        })
+      );
+
+      res.send(
+        requestsWithUserDetailsAndMealData.filter(
+          (request) => request?.meal !== null
+        )
+      );
+    });
+
+    // request food for admin with user search
+    app.get("/requestByAdminWithSearch", async (req, res) => {
+      const searchTerm = req.query?.search;
+      const userSearchRegex = new RegExp(searchTerm, "i");
+      const userCursor = userCollection.find({
+        $or: [
+          { username: { $regex: userSearchRegex } },
+          { email: { $regex: userSearchRegex } },
+        ],
+      });
+
+      // Use a cursor to iterate through matching users efficiently
+      const users = await userCursor.toArray();
+
+      const requestIds = users.map((user) => user.requestedBy); // Extract requestedBy from users
+
+      // Find requests with matching requestedBy
+      const requests = await requestCollection
+        .find({ requestedBy: { $in: requestIds } })
+        .toArray();
+
+      const requestsWithUserDetails = await Promise.all(
+        requests.map(async (request) => {
+          const user = users.find((u) => u.email === request.requestedBy); // Find matching user
+          return { ...request, user };
+        })
+      );
+
+      const requestsWithUserDetailsAndMealData = await Promise.all(
+        requestsWithUserDetails.map(async (request) => {
+          const meal = await mealCollection.findOne({
+            _id: new ObjectId(request.mealId),
+          });
+          return meal ? { ...request, meal } : null;
+        })
+      );
+
+      // res.send(
+      //   requestsWithUserDetailsAndMealData.filter(
+      //     (request) => request?.meal !== null
+      //   )
+      // );
+      res.send(requestsWithUserDetailsAndMealData);
+    });
+
+    app.get("/reviewIdWithMeal", async (req, res) => {
+      // Find distinct mealIds from reviewCollection with corresponding review IDs
+      const mealIdsWithReviewIds = await reviewCollection
+        .aggregate([
+          {
+            $group: {
+              _id: "$mealId",
+              reviewIds: { $push: "$_id" },
+            },
+          },
+        ])
+        .toArray();
+
+      // Convert mealIds to ObjectIds
+      const objectIdMealIds = mealIdsWithReviewIds.map((item) => ({
+        _id: new ObjectId(item._id),
+        reviewIds: item.reviewIds,
+      }));
+
+      // Find meals using the extracted mealIds
+      const meals = await mealCollection
+        .find({ _id: { $in: objectIdMealIds.map((item) => item._id) } })
+        .toArray();
+
+      // Combine meals with reviewIds
+      const mealsWithReviewIds = meals.map((meal) => {
+        const matchingMealId = objectIdMealIds.find((item) =>
+          item._id.equals(meal._id)
+        );
+        return {
+          ...meal,
+          reviewIds: matchingMealId.reviewIds,
+        };
+      });
+
+      res.send(mealsWithReviewIds);
+    });
+
+    app.get("/request", async (req, res) => {
       const email = req.query?.email;
       // console.log(email);
       let query = {};
@@ -318,7 +467,7 @@ async function run() {
 
     // review related apis
     app.get("/review", async (req, res) => {
-      const result = await reviewCollection.find(query).toArray();
+      const result = await reviewCollection.find().toArray();
       res.send(result);
     });
 
@@ -413,12 +562,16 @@ async function run() {
       const deleteResult = await reviewCollection.deleteMany(query);
       res.send(deleteResult);
     });
+    // tests
+    app.get("/test", async(req, res)=>{
+      res.send({message: 'test successful'})
+    })
 
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
-    );
+    // await client.db("admin").command({ ping: 1 });
+    // console.log(
+    //   "Pinged your deployment. You successfully connected to MongoDB!"
+    // );
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
