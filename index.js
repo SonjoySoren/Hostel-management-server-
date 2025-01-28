@@ -1,8 +1,10 @@
 const express = require("express");
 const app = express();
 const cors = require("cors");
-const port = process.env.PORT || 5000;
 require("dotenv").config();
+const stripe = require("stripe")(process.env.STRIPE_SEC);
+
+const port = process.env.PORT || 5000;
 var jwt = require("jsonwebtoken");
 
 // middleware
@@ -31,6 +33,7 @@ async function run() {
     const requestCollection = client.db("Hostel").collection("requests");
     const reviewCollection = client.db("Hostel").collection("reviews");
     const upcomingCollection = client.db("Hostel").collection("upcoming");
+    const paymentCollection = client.db("Hostel").collection("payments");
 
     // Apis related to jwt
     app.post("/jwt", async (req, res) => {
@@ -230,7 +233,7 @@ async function run() {
         };
       }
       const deleteFromUpcoming = await upcomingCollection.deleteOne(query);
-      const result = await mealCollection.insertOne(data)
+      const result = await mealCollection.insertOne(data);
       res.send(result);
     });
 
@@ -362,6 +365,46 @@ async function run() {
       });
 
       res.send(mealsWithReviewIds);
+    });
+    // PAYMENT INTENT
+    app.post("/createPaymentIntent", async (req, res) => {
+      const { price } = req.body;
+      const amount = parseInt(price * 100);
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: "usd",
+        payment_method_types: ["card"],
+      });
+      res.send({
+        clientSecret: paymentIntent.client_secret,
+      });
+    });
+
+    app.post("/payments", async (req, res) => {
+      const payment = req.body;
+      const paymentResult = await paymentCollection.insertOne(payment);
+
+      const query = {
+        email: { $regex: new RegExp(payment?.email, "i") }
+      };
+      const updatedDoc = {
+        $set: {
+          badge: payment?.plan,
+        },
+      };
+      const result = await userCollection.updateOne(query, updatedDoc);
+      res.send({ paymentResult, result });
+    });
+    app.get("/payments/:email", verifyToken, async (req, res) => {
+      const email = req.params.email;
+      if (email !== req.decoded.email) {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+      const query = { email: { $regex: new RegExp(email, "i") } };
+      const result = await paymentCollection.find(query).toArray();
+      console.log("from payments email", email, result);
+      res.send(result);
     });
 
     app.get("/request", async (req, res) => {
@@ -563,9 +606,9 @@ async function run() {
       res.send(deleteResult);
     });
     // tests
-    app.get("/test", async(req, res)=>{
-      res.send({message: 'test successful'})
-    })
+    app.get("/test", async (req, res) => {
+      res.send({ message: "test successful" });
+    });
 
     // Send a ping to confirm a successful connection
     // await client.db("admin").command({ ping: 1 });
