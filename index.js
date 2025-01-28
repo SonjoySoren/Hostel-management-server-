@@ -60,9 +60,9 @@ async function run() {
     // verify admin
     const verifyAdmin = async (req, res, next) => {
       const email = req?.decoded?.email;
-      const query = { email: email };
+      const query = { email: { $regex: new RegExp(email, "i") } };
       const user = await userCollection.findOne(query);
-      const isAdmin = user?.role === "admin";
+      const isAdmin = user?.role == "admin";
       if (!isAdmin) {
         return res.status(403).send({ message: "forbidden access" });
       }
@@ -147,6 +147,12 @@ async function run() {
       };
       const result = await mealCollection.find(query).toArray();
 
+      res.send(result);
+    });
+    // add meal to  database
+    app.post("/meal", async (req, res) => {
+      const newMeal = req.body;
+      const result = await mealCollection.insertOne(newMeal);
       res.send(result);
     });
 
@@ -292,6 +298,24 @@ async function run() {
       const result = await userCollection.insertOne(user);
       res.send({ result });
     });
+
+    app.patch(
+      "/users/admin/:id",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const updatedDoc = {
+          $set: {
+            role: "admin",
+          },
+        };
+        const result = await userCollection.updateOne(query, updatedDoc);
+        res.send(result);
+      }
+    );
+
     // review related apis
     app.get("/review", async (req, res) => {
       const result = await reviewCollection.find(query).toArray();
