@@ -137,6 +137,19 @@ async function run() {
         res.send(result);
       }
     });
+
+    // Number of meals added by a admin
+
+    app.get("/mealAdmin", async (req, res) => {
+      const adminEmail = req.query?.email;
+      const query = {
+        distributorEmail: { $regex: new RegExp(adminEmail, "i") },
+      };
+      const result = await mealCollection.find(query).toArray();
+
+      res.send(result);
+    });
+
     // upcoming foods related apis
     app.get("/upcomingMeals", async (req, res) => {
       const result = await upcomingCollection.find().toArray();
@@ -247,6 +260,27 @@ async function run() {
       // console.log("inside user api");
       res.send(result);
     });
+    app.get("/users", async (req, res) => {
+      const result = await userCollection.find().toArray();
+      res.send(result);
+    });
+
+    // check if user is admin
+    app.get("/users/admin/:email", verifyToken, async (req, res) => {
+      const email = req.params.email;
+
+      if (email !== req.decoded.email) {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+      const query = { email: { $regex: new RegExp(email, "i") } };
+      let isAdmin = false;
+      const user = await userCollection.findOne(query);
+      // console.log("email", email, user);
+      if (user?.role == "admin") {
+        isAdmin = true;
+      }
+      res.send({ isAdmin });
+    });
 
     app.post("/users", async (req, res) => {
       const user = req.body;
@@ -319,10 +353,7 @@ async function run() {
       res.send(result);
     });
 
-
-
-
-    app.patch("/review",verifyToken, async (req, res) => {
+    app.patch("/review", verifyToken, async (req, res) => {
       const email = req.query?.email;
       const mealId = req.query?.mealId;
       const newReview = req.body;
@@ -346,22 +377,18 @@ async function run() {
       res.send(result);
     });
 
-    app.delete('/review', async(req,res)=>{
+    app.delete("/review", async (req, res) => {
       const email = req.query?.email;
       const mealId = req.query?.mealId;
-      if (email && mealId ) {
+      if (email && mealId) {
         query = {
           mealId: mealId,
           userEmail: { $regex: new RegExp(email, "i") },
-          
         };
       }
       const deleteResult = await reviewCollection.deleteMany(query);
       res.send(deleteResult);
-
-    })
-
-    
+    });
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
